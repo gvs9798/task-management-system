@@ -469,6 +469,69 @@ public class Server {
         });
 
 
+        server.createContext("/api/tasks/by-user", exchange -> {
+
+            if (!exchange.getRequestMethod().equalsIgnoreCase("GET")) {
+                exchange.sendResponseHeaders(405, -1);
+                exchange.close();
+                return;
+            }
+
+            String query = exchange.getRequestURI().getQuery();
+
+            if (query == null || !query.matches("user_id=\\d+")) {
+                String response =
+                        "{\"error\":\"A valid user_id is required\"}";
+
+                exchange.getResponseHeaders().set(
+                        "Content-Type", "application/json");
+
+                exchange.sendResponseHeaders(400, response.getBytes().length);
+                exchange.getResponseBody().write(response.getBytes());
+                exchange.close();
+                return;
+            }
+
+            int userId = Integer.parseInt(query.substring("user_id=".length()));
+
+            List<String[]> tasks = TaskDAO.getTasksByUserId(userId);
+
+            StringBuilder response = new StringBuilder("[");
+
+            for (int i = 0; i < tasks.size(); i++) {
+                String[] task = tasks.get(i);
+
+                response.append("""
+                        {
+                            "id": %s,
+                            "title": "%s",
+                            "description": "%s",
+                            "status": "%s",
+                            "user_id": %s
+                        }
+                        """.formatted(
+                            task[0],
+                            task[1],
+                            task[2],
+                            task[3],
+                            task[4]
+                        ));
+
+                if (i < tasks.size() - 1) {
+                    response.append(",");
+                }
+            }
+
+            response.append("]");
+
+            exchange.getResponseHeaders().set(
+                    "Content-Type", "application/json");
+
+            exchange.sendResponseHeaders(200, response.toString().getBytes().length);
+            exchange.getResponseBody().write(response.toString().getBytes());
+            exchange.close();
+        });
+
         // Serve the frontend
         server.createContext("/", exchange -> {
 

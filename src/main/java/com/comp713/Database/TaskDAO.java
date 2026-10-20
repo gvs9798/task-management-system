@@ -42,6 +42,45 @@ public class TaskDAO {
     }
 
 
+public static List<String[]> getTasksByUserId(int userId) {
+
+    List<String[]> tasks = new ArrayList<>();
+
+    String sql = """
+            SELECT id, title, description, status, user_id
+            FROM tasks
+            WHERE user_id = ?
+            """;
+
+    try (Connection connection = Database.connect();
+         PreparedStatement statement = connection.prepareStatement(sql)) {
+
+        statement.setInt(1, userId);
+
+        try (ResultSet resultSet = statement.executeQuery()) {
+
+            while (resultSet.next()) {
+
+                String[] task = {
+                    String.valueOf(resultSet.getInt("id")),
+                    resultSet.getString("title"),
+                    resultSet.getString("description"),
+                    resultSet.getString("status"),
+                    String.valueOf(resultSet.getInt("user_id"))
+                };
+
+                tasks.add(task);
+            }
+        }
+
+    } catch (Exception e) {
+        System.out.println("Error getting user tasks: " + e.getMessage());
+    }
+
+    return tasks;
+}
+
+
     public static boolean createTask(
             String title,
             String description,
