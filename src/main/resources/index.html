@@ -1,202 +1,261 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Task Management System</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="Style.css">
 </head>
 
 <body>
-
     <div class="container">
 
         <h1>Task Management System</h1>
 
         <div class="form-section">
-
             <h2>Create Task</h2>
 
             <input id="title" type="text" placeholder="Task title">
-
             <input id="description" type="text" placeholder="Task description">
 
-            <input id="userId" type="number" placeholder="User ID" value="1">
+            <label for="userId">Assign task to:</label>
+            <select id="userId">
+                <option value="">Loading users...</option>
+            </select>
 
             <button onclick="createTask()">Create Task</button>
-
         </div>
 
         <div class="form-section">
-
             <h2>Tasks</h2>
 
-            <button onclick="loadTasks()">Refresh Tasks</button>
+            <label for="userFilter">Filter by assigned user:</label>
+            <select id="userFilter" onchange="loadTasks()">
+                <option value="">All users</option>
+            </select>
 
+            <button onclick="loadTasks()">Refresh Tasks</button>
         </div>
 
+        <div id="message"></div>
         <div id="tasks"></div>
-
     </div>
 
     <script>
+        async function loadUsers() {
+            try {
+                const response = await fetch("/api/users");
 
-        async function loadTasks() {
+                if (!response.ok) {
+                    throw new Error("Could not load users.");
+                }
 
-            const response = await fetch("/api/tasks");
-            const tasks = await response.json();
+                const users = await response.json();
 
-            const taskContainer = document.getElementById("tasks");
+                const userSelect = document.getElementById("userId");
+                const filterSelect = document.getElementById("userFilter");
 
-            taskContainer.innerHTML = "";
+                userSelect.innerHTML = '<option value="">Select a user</option>';
+                filterSelect.innerHTML = '<option value="">All users</option>';
 
-            tasks.forEach(task => {
+                users.forEach(user => {
+                    const option = document.createElement("option");
+                    option.value = user.id;
+                    option.textContent = user.username + " (ID: " + user.id + ")";
+                    userSelect.appendChild(option);
 
-                const taskDiv = document.createElement("div");
+                    const filterOption = document.createElement("option");
+                    filterOption.value = user.id;
+                    filterOption.textContent = user.username;
+                    filterSelect.appendChild(filterOption);
+                });
 
-                taskDiv.className = "task";
-
-                taskDiv.innerHTML = `
-                    <h3>${task.title}</h3>
-                    <p>${task.description}</p>
-                    <p class="status">Status: ${task.status}</p>
-                    <p>User ID: ${task.user_id}</p>
-
-                    <button onclick="updateTask(${task.id}, '${task.title}', '${task.description}', '${task.status}')">
-                        Edit Task
-                    </button>
-
-                    <button onclick="deleteTask(${task.id})">
-                        Delete
-                    </button>
-                `;
-
-                taskContainer.appendChild(taskDiv);
-            });
-        }
-
-
-        async function createTask() {
-
-            const title = document.getElementById("title").value;
-            const description = document.getElementById("description").value;
-            const userId = document.getElementById("userId").value;
-
-            const response = await fetch("/api/tasks/create", {
-
-                method: "POST",
-
-                headers: {
-                    "Content-Type": "application/json"
-                },
-
-                body: JSON.stringify({
-                    title: title,
-                    description: description,
-                    user_id: Number(userId)
-                })
-            });
-
-            const result = await response.json();
-
-            alert(result.message || result.error);
-
-            if (response.ok) {
-
-                document.getElementById("title").value = "";
-                document.getElementById("description").value = "";
-
-                loadTasks();
+                if (users.length === 0) {
+                    showMessage("No users found. Create a user before assigning tasks.");
+                }
+            } catch (error) {
+                showMessage("Error loading users: " + error.message);
             }
         }
 
+        async function loadTasks() {
+            const selectedUser = document.getElementById("userFilter").value;
+            let url = "/api/tasks";
 
-async function updateTask(
-    id,
-    oldTitle,
-    oldDescription,
-    oldStatus
-) {
+            if (selectedUser !== "") {
+                url = "/api/tasks/by-user?user_id=" + encodeURIComponent(selectedUser);
+            }
 
-    const newTitle = prompt(
-        "Enter the new task title:",
-        oldTitle
-    );
+            const taskContainer = document.getElementById("tasks");
+            taskContainer.replaceChildren();
 
-    if (newTitle === null) {
-        return;
-    }
+            try {
+                const response = await fetch(url);
 
-    const newDescription = prompt(
-        "Enter the new task description:",
-        oldDescription
-    );
+                if (!response.ok) {
+                    throw new Error("Server returned status " + response.status);
+                }
 
-    if (newDescription === null) {
-        return;
-    }
+                const tasks = await response.json();
 
-    const newStatus = prompt(
-        "Enter status (TODO, IN_PROGRESS, or DONE):",
-        oldStatus
-    );
+                if (tasks.length === 0) {
+                    taskContainer.textContent = "No tasks found.";
+                    return;
+                }
 
-    if (newStatus === null) {
-        return;
-    }
+                tasks.forEach(task => {
+                    const taskDiv = document.createElement("div");
+                    taskDiv.className = "task";
 
-    const response = await fetch("/api/tasks/update", {
+                    const heading = document.createElement("h3");
+                    heading.textContent = task.title;
 
-        method: "PUT",
+                    const description = document.createElement("p");
+                    description.textContent = task.description;
 
-        headers: {
-            "Content-Type": "application/json"
-        },
+                    const status = document.createElement("p");
+                    status.className = "status";
+                    status.textContent = "Status: " + task.status;
 
-        body: JSON.stringify({
-            id: id,
-            title: newTitle,
-            description: newDescription,
-            status: newStatus
-        })
-    });
+                    const assignedUser = document.createElement("p");
+                    assignedUser.textContent = "User ID: " + task.user_id;
 
-    const result = await response.json();
+                    const editButton = document.createElement("button");
+                    editButton.textContent = "Edit Task";
+                    editButton.addEventListener("click", () => {
+                        updateTask(task.id, task.title, task.description, task.status);
+                    });
 
-    alert(result.message || result.error);
+                    const deleteButton = document.createElement("button");
+                    deleteButton.textContent = "Delete";
+                    deleteButton.addEventListener("click", () => deleteTask(task.id));
 
-    if (response.ok) {
-        loadTasks();
-    }
-}
+                    taskDiv.append(
+                        heading,
+                        description,
+                        status,
+                        assignedUser,
+                        editButton,
+                        deleteButton
+                    );
 
-
-        async function deleteTask(id) {
-
-            const response = await fetch("/api/tasks/delete", {
-
-                method: "DELETE",
-
-                headers: {
-                    "Content-Type": "application/json"
-                },
-
-                body: JSON.stringify({
-                    id: id
-                })
-            });
-
-            const result = await response.json();
-
-            alert(result.message || result.error);
-
-            loadTasks();
+                    taskContainer.appendChild(taskDiv);
+                });
+            } catch (error) {
+                showMessage("Error loading tasks: " + error.message);
+            }
         }
 
+        async function createTask() {
+            const title = document.getElementById("title").value.trim();
+            const description = document.getElementById("description").value.trim();
+            const userId = document.getElementById("userId").value;
 
-        loadTasks();
+            if (!title || !description || !userId) {
+                showMessage("Enter a title, description, and assigned user.");
+                return;
+            }
 
+            try {
+                const response = await fetch("/api/tasks/create", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        title: title,
+                        description: description,
+                        user_id: Number(userId)
+                    })
+                });
+
+                const result = await response.json();
+                showMessage(result.message || result.error);
+
+                if (response.ok) {
+                    document.getElementById("title").value = "";
+                    document.getElementById("description").value = "";
+                    await loadTasks();
+                }
+            } catch (error) {
+                showMessage("Could not create task: " + error.message);
+            }
+        }
+
+        async function updateTask(id, oldTitle, oldDescription, oldStatus) {
+            const newTitle = prompt("Enter the new task title:", oldTitle);
+            if (newTitle === null) return;
+
+            const newDescription = prompt("Enter the new task description:", oldDescription);
+            if (newDescription === null) return;
+
+            const newStatus = prompt(
+                "Enter status (TODO, IN_PROGRESS, or DONE):",
+                oldStatus
+            );
+            if (newStatus === null) return;
+
+            try {
+                const response = await fetch("/api/tasks/update", {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        id: id,
+                        title: newTitle,
+                        description: newDescription,
+                        status: newStatus
+                    })
+                });
+
+                const result = await response.json();
+                showMessage(result.message || result.error);
+
+                if (response.ok) {
+                    await loadTasks();
+                }
+            } catch (error) {
+                showMessage("Could not update task: " + error.message);
+            }
+        }
+
+        async function deleteTask(id) {
+            if (!confirm("Are you sure you want to delete this task?")) {
+                return;
+            }
+
+            try {
+                const response = await fetch("/api/tasks/delete", {
+                    method: "DELETE",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ id: id })
+                });
+
+                const result = await response.json();
+                showMessage(result.message || result.error);
+
+                if (response.ok) {
+                    await loadTasks();
+                }
+            } catch (error) {
+                showMessage("Could not delete task: " + error.message);
+            }
+        }
+
+        function showMessage(message) {
+            document.getElementById("message").textContent = message;
+        }
+
+        async function startApp() {
+            await loadUsers();
+            await loadTasks();
+        }
+
+        startApp();
     </script>
-
 </body>
 </html>
