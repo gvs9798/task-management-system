@@ -1,5 +1,5 @@
 package com.comp713;
-
+import com.comp713.TaskEventGrpcClient;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -224,12 +224,45 @@ public class Server {
                 return;
             }
 
-            boolean updated = TaskDAO.updateTask(
-                    taskId,
-                    title,
-                    description,
-                    status
-            );
+           
+
+String oldStatus = null;
+int userId = 0;
+
+// Find the task's current status and owner.
+for (String[] task : TaskDAO.getAllTasks()) {
+    if (Integer.parseInt(task[0]) == taskId) {
+        oldStatus = task[3];
+        userId = Integer.parseInt(task[4]);
+        break;
+    }
+}
+
+boolean updated = TaskDAO.updateTask(
+        taskId,
+        title,
+        description,
+        status
+);
+
+if (updated && oldStatus != null && !oldStatus.equals(status)) {
+    try {
+        TaskEventGrpcClient.recordTaskStatusChange(
+                taskId,
+                title,
+                oldStatus,
+                status,
+                userId
+        );
+    } catch (Exception e) {
+        System.out.println(
+                "Could not send task status event: " + e.getMessage()
+        );
+    }
+}
+
+
+
 
             String response;
 

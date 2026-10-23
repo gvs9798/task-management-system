@@ -12,14 +12,21 @@ import java.io.IOException;
 
 public class TaskEventGrpcServer {
 
-    public static void main(String[] args) throws IOException, InterruptedException {
+    public static void main(String[] args)
+            throws IOException, InterruptedException {
+
+        // Create the database table before accepting events.
+        TaskEventDAO.createTable();
+
         Server server = ServerBuilder
                 .forPort(9090)
                 .addService(new TaskEventService())
                 .build()
                 .start();
 
-        System.out.println("gRPC Task Event Service running on port 9090");
+        System.out.println(
+                "gRPC Task Event Service running on port 9090"
+        );
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("Stopping gRPC service...");
@@ -29,27 +36,41 @@ public class TaskEventGrpcServer {
         server.awaitTermination();
     }
 
-    static class TaskEventService extends TaskEventServiceGrpc.TaskEventServiceImplBase {
+    static class TaskEventService
+            extends TaskEventServiceGrpc.TaskEventServiceImplBase {
 
         @Override
         public void recordTaskStatusChange(
                 TaskStatusChangeRequest request,
                 StreamObserver<TaskStatusChangeResponse> responseObserver) {
 
-            System.out.println("Task status change received:");
-            System.out.println("Task ID: " + request.getTaskId());
-            System.out.println("Task title: " + request.getTaskTitle());
-            System.out.println("Old status: " + request.getOldStatus());
-            System.out.println("New status: " + request.getNewStatus());
-            System.out.println("User ID: " + request.getUserId());
+            boolean saved = TaskEventDAO.saveEvent(
+                    request.getTaskId(),
+                    request.getTaskTitle(),
+                    request.getOldStatus(),
+                    request.getNewStatus(),
+                    request.getUserId()
+            );
 
-            TaskStatusChangeResponse response = TaskStatusChangeResponse.newBuilder()
-                    .setSuccess(true)
-                    .setMessage("Task status change recorded")
-                    .build();
+            TaskStatusChangeResponse response =
+                    TaskStatusChangeResponse.newBuilder()
+                            .setSuccess(saved)
+                            .setMessage(
+                                    saved
+                                            ? "Task status event saved"
+                                            : "Failed to save task status event"
+                            )
+                            .build();
 
             responseObserver.onNext(response);
             responseObserver.onCompleted();
+
+            if (saved) {
+                System.out.println(
+                        "Task status event saved for task ID: "
+                        + request.getTaskId()
+                );
+            }
         }
     }
 }
