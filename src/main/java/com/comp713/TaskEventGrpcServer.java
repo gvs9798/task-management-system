@@ -43,6 +43,8 @@ public class TaskEventGrpcServer {
         public void recordTaskStatusChange(
                 TaskStatusChangeRequest request,
                 StreamObserver<TaskStatusChangeResponse> responseObserver) {
+                System.out.println("Received gRPC request for task ID: " + request.getTaskId());
+
 
             boolean saved = TaskEventDAO.saveEvent(
                     request.getTaskId(),
