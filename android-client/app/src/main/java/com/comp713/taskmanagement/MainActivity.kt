@@ -1,14 +1,22 @@
 package com.comp713.taskmanagement
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -16,15 +24,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.comp713.taskmanagement.ui.theme.TaskManagementMobileTheme
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -41,33 +47,35 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+data class Task(
+    val id: Int,
+    val title: String,
+    val description: String,
+    val status: String,
+    val userId: Int
+)
+
 @Composable
 fun TaskManagementScreen() {
 
-    var title by remember {
-        mutableStateOf("")
-    }
+    var title by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
 
-    var description by remember {
-        mutableStateOf("")
-    }
-
-    var result by remember {
+    var message by remember {
         mutableStateOf("Press Load Tasks to retrieve tasks from the server.")
     }
 
-    var loading by remember {
-        mutableStateOf(false)
+    var tasks by remember {
+        mutableStateOf<List<Task>>(emptyList())
     }
-
-    val scope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
 
         Text(
@@ -75,229 +83,345 @@ fun TaskManagementScreen() {
             style = MaterialTheme.typography.headlineMedium
         )
 
+        Spacer(modifier = Modifier.height(8.dp))
+
         Text(
             text = "Android Client",
-            modifier = Modifier.padding(
-                top = 8.dp,
-                bottom = 24.dp
-            )
+            style = MaterialTheme.typography.titleMedium
         )
+
+        Spacer(modifier = Modifier.height(28.dp))
 
         OutlinedTextField(
             value = title,
-            onValueChange = {
-                title = it
-            },
+            onValueChange = { title = it },
             label = {
                 Text("Task Title")
-            }
+            },
+            modifier = Modifier.fillMaxWidth()
         )
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         OutlinedTextField(
             value = description,
-            onValueChange = {
-                description = it
-            },
+            onValueChange = { description = it },
             label = {
                 Text("Description")
             },
-            modifier = Modifier.padding(top = 8.dp)
+            modifier = Modifier.fillMaxWidth()
         )
 
+        Spacer(modifier = Modifier.height(16.dp))
+
         Button(
-            enabled = !loading,
-            modifier = Modifier.padding(top = 16.dp),
             onClick = {
 
                 if (title.isBlank() || description.isBlank()) {
 
-                    result = "Please enter a title and description."
+                    message = "Please enter a title and description."
 
                 } else {
 
-                    loading = true
+                    message = "Creating task..."
 
-                    scope.launch {
+                    createTask(
+                        title = title,
+                        description = description,
+                        onResult = { result ->
 
-                        result = createTask(
-                            title = title,
-                            description = description
-                        )
+                            message = result
 
-                        if (result.contains("success", ignoreCase = true)) {
-                            title = ""
-                            description = ""
+                            if (result.contains("success", ignoreCase = true)) {
+                                title = ""
+                                description = ""
+                            }
                         }
-
-                        loading = false
-                    }
+                    )
                 }
             }
         ) {
             Text("Create Task")
         }
 
+        Spacer(modifier = Modifier.height(10.dp))
+
         Button(
-            enabled = !loading,
-            modifier = Modifier.padding(top = 8.dp),
             onClick = {
 
-                loading = true
+                message = "Loading tasks..."
 
-                scope.launch {
+                loadTasks(
+                    onSuccess = { loadedTasks ->
 
-                    result = loadTasks()
+                        tasks = loadedTasks
 
-                    loading = false
-                }
+                        message =
+                            if (loadedTasks.isEmpty()) {
+                                "No tasks found."
+                            } else {
+                                ""
+                            }
+                    },
+                    onError = { error ->
+
+                        message = error
+                    }
+                )
             }
         ) {
             Text("Load Tasks")
         }
 
-        if (loading) {
+        Spacer(modifier = Modifier.height(20.dp))
 
-            CircularProgressIndicator(
-                modifier = Modifier.padding(top = 20.dp)
+        if (message.isNotBlank()) {
+
+            Text(
+                text = message,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        tasks.forEach { task ->
+
+            TaskCard(task)
+
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+    }
+}
+
+@Composable
+fun TaskCard(task: Task) {
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 4.dp
+        )
+    ) {
+
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+
+            Text(
+                text = task.title,
+                style = MaterialTheme.typography.titleLarge
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = task.description,
+                style = MaterialTheme.typography.bodyLarge
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "Status: ${task.status}",
+                style = MaterialTheme.typography.bodyMedium
+            )
+
+            Text(
+                text = "Task ID: ${task.id}",
+                style = MaterialTheme.typography.bodySmall
             )
         }
-
-        Text(
-            text = result,
-            modifier = Modifier.padding(top = 24.dp)
-        )
     }
 }
 
-suspend fun loadTasks(): String {
-
-    return withContext(Dispatchers.IO) {
-
-        try {
-
-            val url =
-                URL("http://127.0.0.1:8080/api/tasks")
-
-            val connection =
-                url.openConnection() as HttpURLConnection
-
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 5000
-            connection.readTimeout = 5000
-
-            val responseCode = connection.responseCode
-
-            if (responseCode == 200) {
-
-                val response =
-                    connection.inputStream
-                        .bufferedReader()
-                        .use {
-                            it.readText()
-                        }
-
-                if (response.trim() == "[]") {
-                    "No tasks found."
-                } else {
-                    response
-                }
-
-            } else {
-
-                "Server returned HTTP $responseCode"
-            }
-
-        } catch (e: Exception) {
-
-            "Unable to connect to server.\n${e.message}"
-        }
-    }
-}
-
-suspend fun createTask(
+fun createTask(
     title: String,
-    description: String
-): String {
+    description: String,
+    onResult: (String) -> Unit
+) {
 
-    return withContext(Dispatchers.IO) {
+    Thread {
 
         try {
 
             val url =
-                URL("http://127.0.0.1:8080/api/tasks/create")
+                URL("http://localhost:8080/api/tasks/create")
 
             val connection =
                 url.openConnection() as HttpURLConnection
 
             connection.requestMethod = "POST"
-            connection.connectTimeout = 5000
-            connection.readTimeout = 5000
-            connection.doOutput = true
 
             connection.setRequestProperty(
                 "Content-Type",
                 "application/json"
             )
 
-            val safeTitle =
-                title
-                    .replace("\\", "\\\\")
-                    .replace("\"", "\\\"")
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+            connection.doOutput = true
 
-            val safeDescription =
-                description
-                    .replace("\\", "\\\\")
-                    .replace("\"", "\\\"")
+            val json = JSONObject()
 
-            val json = """
-                {
-                    "title":"$safeTitle",
-                    "description":"$safeDescription",
-                    "user_id":1
-                }
-            """.trimIndent()
+            json.put("title", title)
+            json.put("description", description)
+
+            // Michael local test user
+            json.put("user_id", 1)
 
             connection.outputStream.use { output ->
 
                 output.write(
-                    json.toByteArray(Charsets.UTF_8)
+                    json.toString().toByteArray()
                 )
             }
 
             val responseCode =
                 connection.responseCode
 
-            val responseStream =
+            val responseText =
+
                 if (responseCode in 200..299) {
+
                     connection.inputStream
+                        .bufferedReader()
+                        .use {
+                            it.readText()
+                        }
+
                 } else {
+
                     connection.errorStream
+                        ?.bufferedReader()
+                        ?.use {
+                            it.readText()
+                        }
+                        ?: "Unknown error"
                 }
 
-            val response =
-                responseStream
-                    ?.bufferedReader()
-                    ?.use {
-                        it.readText()
-                    }
-                    ?: ""
+            Handler(
+                Looper.getMainLooper()
+            ).post {
+
+                if (responseCode in 200..299) {
+
+                    onResult(
+                        "Task created successfully"
+                    )
+
+                } else {
+
+                    onResult(
+                        "Create task failed.\nHTTP $responseCode\n$responseText"
+                    )
+                }
+            }
+
+            connection.disconnect()
+
+        } catch (e: Exception) {
+
+            Handler(
+                Looper.getMainLooper()
+            ).post {
+
+                onResult(
+                    "Unable to connect to server.\n${e.message}"
+                )
+            }
+        }
+
+    }.start()
+}
+
+fun loadTasks(
+    onSuccess: (List<Task>) -> Unit,
+    onError: (String) -> Unit
+) {
+
+    Thread {
+
+        try {
+
+            val url =
+                URL("http://localhost:8080/api/tasks")
+
+            val connection =
+                url.openConnection() as HttpURLConnection
+
+            connection.requestMethod = "GET"
+
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+
+            val responseCode =
+                connection.responseCode
 
             if (responseCode in 200..299) {
 
-                if (response.isBlank()) {
-                    "Task created successfully."
-                } else {
-                    response
+                val response =
+
+                    connection.inputStream
+                        .bufferedReader()
+                        .use {
+                            it.readText()
+                        }
+
+                val jsonArray =
+                    JSONArray(response)
+
+                val taskList =
+                    mutableListOf<Task>()
+
+                for (i in 0 until jsonArray.length()) {
+
+                    val item =
+                        jsonArray.getJSONObject(i)
+
+                    taskList.add(
+                        Task(
+                            id = item.optInt("id"),
+                            title = item.optString("title"),
+                            description = item.optString("description"),
+                            status = item.optString("status"),
+                            userId = item.optInt("user_id")
+                        )
+                    )
+                }
+
+                Handler(
+                    Looper.getMainLooper()
+                ).post {
+
+                    onSuccess(taskList)
                 }
 
             } else {
 
-                "Create task failed.\nHTTP $responseCode\n$response"
+                Handler(
+                    Looper.getMainLooper()
+                ).post {
+
+                    onError(
+                        "Failed to load tasks.\nHTTP $responseCode"
+                    )
+                }
             }
+
+            connection.disconnect()
 
         } catch (e: Exception) {
 
-            "Unable to create task.\n${e.message}"
+            Handler(
+                Looper.getMainLooper()
+            ).post {
+
+                onError(
+                    "Unable to connect to server.\n${e.message}"
+                )
+            }
         }
-    }
+
+    }.start()
 }
