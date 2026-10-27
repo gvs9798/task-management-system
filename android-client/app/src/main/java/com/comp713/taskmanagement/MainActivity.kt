@@ -132,10 +132,14 @@ class MainActivity : ComponentActivity() {
 
                 Button(
                     onClick = {
+
                         if (title.isBlank() || description.isBlank()) {
+
                             message =
                                 "Please enter a title and description."
+
                         } else {
+
                             createTask(
                                 title = title,
                                 description = description
@@ -144,6 +148,7 @@ class MainActivity : ComponentActivity() {
                                 message = result
 
                                 if (result.startsWith("Task created")) {
+
                                     showNotification(
                                         "Task Created",
                                         "Task \"$title\" was created successfully."
@@ -152,9 +157,11 @@ class MainActivity : ComponentActivity() {
                                     title = ""
                                     description = ""
 
-                                    loadTasks {
-                                            loadedTasks ->
-                                        tasks = loadedTasks
+                                    loadTasks { loadedTasks, error ->
+
+                                        if (error == null) {
+                                            tasks = loadedTasks ?: emptyList()
+                                        }
                                     }
                                 }
                             }
@@ -166,16 +173,26 @@ class MainActivity : ComponentActivity() {
 
                 Button(
                     onClick = {
-                        loadTasks { loadedTasks ->
 
-                            tasks = loadedTasks
+                        message = "Loading tasks..."
 
-                            message =
-                                if (loadedTasks.isEmpty()) {
-                                    "No tasks found."
-                                } else {
-                                    "Tasks loaded successfully."
-                                }
+                        loadTasks { loadedTasks, error ->
+
+                            if (error != null) {
+
+                                message = error
+
+                            } else {
+
+                                tasks = loadedTasks ?: emptyList()
+
+                                message =
+                                    if (tasks.isEmpty()) {
+                                        "No tasks found."
+                                    } else {
+                                        "Tasks loaded successfully."
+                                    }
+                            }
                         }
                     }
                 ) {
@@ -212,19 +229,13 @@ class MainActivity : ComponentActivity() {
 
                             Spacer(modifier = Modifier.height(4.dp))
 
-                            Text(
-                                text = task.description
-                            )
+                            Text(task.description)
 
                             Spacer(modifier = Modifier.height(4.dp))
 
-                            Text(
-                                text = "Status: ${task.status}"
-                            )
+                            Text("Status: ${task.status}")
 
-                            Text(
-                                text = "Task ID: ${task.id}"
-                            )
+                            Text("Task ID: ${task.id}")
 
                             if (task.status != "DONE") {
 
@@ -252,8 +263,14 @@ class MainActivity : ComponentActivity() {
                                                 )
 
                                                 loadTasks {
-                                                        loadedTasks ->
-                                                    tasks = loadedTasks
+                                                        loadedTasks,
+                                                        error ->
+
+                                                    if (error == null) {
+                                                        tasks =
+                                                            loadedTasks
+                                                                ?: emptyList()
+                                                    }
                                                 }
                                             }
                                         }
@@ -286,6 +303,7 @@ class MainActivity : ComponentActivity() {
                     url.openConnection() as HttpURLConnection
 
                 connection.requestMethod = "POST"
+
                 connection.setRequestProperty(
                     "Content-Type",
                     "application/json"
@@ -301,8 +319,7 @@ class MainActivity : ComponentActivity() {
                 json.put("description", description)
                 json.put("user_id", 1)
 
-                connection.outputStream.use {
-                        output ->
+                connection.outputStream.use { output ->
                     output.write(
                         json.toString().toByteArray()
                     )
@@ -312,9 +329,7 @@ class MainActivity : ComponentActivity() {
                     connection.responseCode
 
                 val result =
-                    if (
-                        responseCode in 200..299
-                    ) {
+                    if (responseCode in 200..299) {
                         "Task created successfully."
                     } else {
                         "Failed to create task. HTTP $responseCode"
@@ -342,7 +357,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun loadTasks(
-        callback: (List<Task>) -> Unit
+        callback: (List<Task>?, String?) -> Unit
     ) {
 
         Thread {
@@ -362,9 +377,7 @@ class MainActivity : ComponentActivity() {
                 val responseCode =
                     connection.responseCode
 
-                if (
-                    responseCode in 200..299
-                ) {
+                if (responseCode in 200..299) {
 
                     val response =
                         connection.inputStream
@@ -390,15 +403,19 @@ class MainActivity : ComponentActivity() {
                             Task(
                                 id =
                                     obj.getInt("id"),
+
                                 title =
                                     obj.getString("title"),
+
                                 description =
                                     obj.optString(
                                         "description",
                                         ""
                                     ),
+
                                 status =
                                     obj.getString("status"),
+
                                 userId =
                                     obj.getInt("user_id")
                             )
@@ -408,7 +425,11 @@ class MainActivity : ComponentActivity() {
                     Handler(
                         Looper.getMainLooper()
                     ).post {
-                        callback(taskList)
+
+                        callback(
+                            taskList,
+                            null
+                        )
                     }
 
                 } else {
@@ -416,7 +437,11 @@ class MainActivity : ComponentActivity() {
                     Handler(
                         Looper.getMainLooper()
                     ).post {
-                        callback(emptyList())
+
+                        callback(
+                            null,
+                            "Failed to load tasks. HTTP $responseCode"
+                        )
                     }
                 }
 
@@ -427,7 +452,11 @@ class MainActivity : ComponentActivity() {
                 Handler(
                     Looper.getMainLooper()
                 ).post {
-                    callback(emptyList())
+
+                    callback(
+                        null,
+                        "Unable to connect to server."
+                    )
                 }
             }
         }.start()
@@ -488,8 +517,7 @@ class MainActivity : ComponentActivity() {
                     task.userId
                 )
 
-                connection.outputStream.use {
-                        output ->
+                connection.outputStream.use { output ->
                     output.write(
                         json.toString().toByteArray()
                     )
@@ -499,9 +527,7 @@ class MainActivity : ComponentActivity() {
                     connection.responseCode
 
                 val result =
-                    if (
-                        responseCode in 200..299
-                    ) {
+                    if (responseCode in 200..299) {
                         "Task updated successfully."
                     } else {
                         "Failed to update task. HTTP $responseCode"
@@ -609,8 +635,7 @@ class MainActivity : ComponentActivity() {
             ) as NotificationManager
 
         manager.notify(
-            System.currentTimeMillis()
-                .toInt(),
+            System.currentTimeMillis().toInt(),
             notification
         )
     }
