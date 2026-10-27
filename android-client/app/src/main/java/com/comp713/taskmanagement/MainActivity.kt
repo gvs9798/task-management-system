@@ -106,7 +106,7 @@ suspend fun loadTasks(): String {
 
         try {
 
-            val url = URL("http://10.0.2.2:8080/api/tasks")
+            val url = URL("http://127.0.0.1:8080/api/tasks")
 
             val connection = url.openConnection() as HttpURLConnection
 
@@ -118,9 +118,15 @@ suspend fun loadTasks(): String {
 
             if (responseCode == 200) {
 
-                connection.inputStream
+                val response = connection.inputStream
                     .bufferedReader()
                     .use { it.readText() }
+
+                if (response.trim() == "[]") {
+                    "No tasks found."
+                } else {
+                    response
+                }
 
             } else {
 
