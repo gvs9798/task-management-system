@@ -69,6 +69,28 @@ fun TaskManagementScreen() {
         mutableStateOf<List<Task>>(emptyList())
     }
 
+    fun refreshTasks() {
+
+        message = "Loading tasks..."
+
+        loadTasks(
+            onSuccess = { loadedTasks ->
+
+                tasks = loadedTasks
+
+                message =
+                    if (loadedTasks.isEmpty()) {
+                        "No tasks found."
+                    } else {
+                        ""
+                    }
+            },
+            onError = { error ->
+                message = error
+            }
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -128,13 +150,14 @@ fun TaskManagementScreen() {
                     createTask(
                         title = title,
                         description = description,
-                        onResult = { result ->
+                        onResult = { success, result ->
 
                             message = result
 
-                            if (result.contains("success", ignoreCase = true)) {
+                            if (success) {
                                 title = ""
                                 description = ""
+                                refreshTasks()
                             }
                         }
                     )
@@ -148,26 +171,7 @@ fun TaskManagementScreen() {
 
         Button(
             onClick = {
-
-                message = "Loading tasks..."
-
-                loadTasks(
-                    onSuccess = { loadedTasks ->
-
-                        tasks = loadedTasks
-
-                        message =
-                            if (loadedTasks.isEmpty()) {
-                                "No tasks found."
-                            } else {
-                                ""
-                            }
-                    },
-                    onError = { error ->
-
-                        message = error
-                    }
-                )
+                refreshTasks()
             }
         ) {
             Text("Load Tasks")
@@ -187,7 +191,26 @@ fun TaskManagementScreen() {
 
         tasks.forEach { task ->
 
-            TaskCard(task)
+            TaskCard(
+                task = task,
+                onComplete = {
+
+                    message = "Updating task..."
+
+                    updateTaskStatus(
+                        task = task,
+                        newStatus = "DONE",
+                        onResult = { success, result ->
+
+                            message = result
+
+                            if (success) {
+                                refreshTasks()
+                            }
+                        }
+                    )
+                }
+            )
 
             Spacer(modifier = Modifier.height(12.dp))
         }
@@ -195,7 +218,10 @@ fun TaskManagementScreen() {
 }
 
 @Composable
-fun TaskCard(task: Task) {
+fun TaskCard(
+    task: Task,
+    onComplete: () -> Unit
+) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -231,6 +257,17 @@ fun TaskCard(task: Task) {
                 text = "Task ID: ${task.id}",
                 style = MaterialTheme.typography.bodySmall
             )
+
+            if (!task.status.equals("DONE", ignoreCase = true)) {
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Button(
+                    onClick = onComplete
+                ) {
+                    Text("Mark Completed")
+                }
+            }
         }
     }
 }
@@ -238,7 +275,7 @@ fun TaskCard(task: Task) {
 fun createTask(
     title: String,
     description: String,
-    onResult: (String) -> Unit
+    onResult: (Boolean, String) -> Unit
 ) {
 
     Thread {
@@ -266,8 +303,6 @@ fun createTask(
 
             json.put("title", title)
             json.put("description", description)
-
-            // Michael local test user
             json.put("user_id", 1)
 
             connection.outputStream.use { output ->
@@ -307,12 +342,14 @@ fun createTask(
                 if (responseCode in 200..299) {
 
                     onResult(
+                        true,
                         "Task created successfully"
                     )
 
                 } else {
 
                     onResult(
+                        false,
                         "Create task failed.\nHTTP $responseCode\n$responseText"
                     )
                 }
@@ -327,6 +364,7 @@ fun createTask(
             ).post {
 
                 onResult(
+                    false,
                     "Unable to connect to server.\n${e.message}"
                 )
             }
@@ -419,6 +457,109 @@ fun loadTasks(
 
                 onError(
                     "Unable to connect to server.\n${e.message}"
+                )
+            }
+        }
+
+    }.start()
+}
+
+fun updateTaskStatus(
+    task: Task,
+    newStatus: String,
+    onResult: (Boolean, String) -> Unit
+) {
+
+    Thread {
+
+        try {
+
+            val url =
+                URL("http://localhost:8080/api/tasks/update")
+
+            val connection =
+                url.openConnection() as HttpURLConnection
+
+            connection.requestMethod = "PUT"
+
+            connection.setRequestProperty(
+                "Content-Type",
+                "application/json"
+            )
+
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+            connection.doOutput = true
+
+            val json = JSONObject()
+
+            json.put("id", task.id)
+            json.put("title", task.title)
+            json.put("description", task.description)
+            json.put("status", newStatus)
+            json.put("user_id", task.userId)
+
+            connection.outputStream.use { output ->
+
+                output.write(
+                    json.toString().toByteArray()
+                )
+            }
+
+            val responseCode =
+                connection.responseCode
+
+            val responseText =
+
+                if (responseCode in 200..299) {
+
+                    connection.inputStream
+                        .bufferedReader()
+                        .use {
+                            it.readText()
+                        }
+
+                } else {
+
+                    connection.errorStream
+                        ?.bufferedReader()
+                        ?.use {
+                            it.readText()
+                        }
+                        ?: "Unknown error"
+                }
+
+            Handler(
+                Looper.getMainLooper()
+            ).post {
+
+                if (responseCode in 200..299) {
+
+                    onResult(
+                        true,
+                        "Task updated successfully"
+                    )
+
+                } else {
+
+                    onResult(
+                        false,
+                        "Update task failed.\nHTTP $responseCode\n$responseText"
+                    )
+                }
+            }
+
+            connection.disconnect()
+
+        } catch (e: Exception) {
+
+            Handler(
+                Looper.getMainLooper()
+            ).post {
+
+                onResult(
+                    false,
+                    "Unable to update task.\n${e.message}"
                 )
             }
         }
