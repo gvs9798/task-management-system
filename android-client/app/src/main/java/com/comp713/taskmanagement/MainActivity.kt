@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -28,6 +29,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 class MainActivity : ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -41,6 +43,14 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun TaskManagementScreen() {
+
+    var title by remember {
+        mutableStateOf("")
+    }
+
+    var description by remember {
+        mutableStateOf("")
+    }
 
     var result by remember {
         mutableStateOf("Press Load Tasks to retrieve tasks from the server.")
@@ -67,11 +77,69 @@ fun TaskManagementScreen() {
 
         Text(
             text = "Android Client",
-            modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
+            modifier = Modifier.padding(
+                top = 8.dp,
+                bottom = 24.dp
+            )
+        )
+
+        OutlinedTextField(
+            value = title,
+            onValueChange = {
+                title = it
+            },
+            label = {
+                Text("Task Title")
+            }
+        )
+
+        OutlinedTextField(
+            value = description,
+            onValueChange = {
+                description = it
+            },
+            label = {
+                Text("Description")
+            },
+            modifier = Modifier.padding(top = 8.dp)
         )
 
         Button(
             enabled = !loading,
+            modifier = Modifier.padding(top = 16.dp),
+            onClick = {
+
+                if (title.isBlank() || description.isBlank()) {
+
+                    result = "Please enter a title and description."
+
+                } else {
+
+                    loading = true
+
+                    scope.launch {
+
+                        result = createTask(
+                            title = title,
+                            description = description
+                        )
+
+                        if (result.contains("success", ignoreCase = true)) {
+                            title = ""
+                            description = ""
+                        }
+
+                        loading = false
+                    }
+                }
+            }
+        ) {
+            Text("Create Task")
+        }
+
+        Button(
+            enabled = !loading,
+            modifier = Modifier.padding(top = 8.dp),
             onClick = {
 
                 loading = true
@@ -88,6 +156,7 @@ fun TaskManagementScreen() {
         }
 
         if (loading) {
+
             CircularProgressIndicator(
                 modifier = Modifier.padding(top = 20.dp)
             )
@@ -106,9 +175,11 @@ suspend fun loadTasks(): String {
 
         try {
 
-            val url = URL("http://127.0.0.1:8080/api/tasks")
+            val url =
+                URL("http://127.0.0.1:8080/api/tasks")
 
-            val connection = url.openConnection() as HttpURLConnection
+            val connection =
+                url.openConnection() as HttpURLConnection
 
             connection.requestMethod = "GET"
             connection.connectTimeout = 5000
@@ -118,9 +189,12 @@ suspend fun loadTasks(): String {
 
             if (responseCode == 200) {
 
-                val response = connection.inputStream
-                    .bufferedReader()
-                    .use { it.readText() }
+                val response =
+                    connection.inputStream
+                        .bufferedReader()
+                        .use {
+                            it.readText()
+                        }
 
                 if (response.trim() == "[]") {
                     "No tasks found."
@@ -136,6 +210,94 @@ suspend fun loadTasks(): String {
         } catch (e: Exception) {
 
             "Unable to connect to server.\n${e.message}"
+        }
+    }
+}
+
+suspend fun createTask(
+    title: String,
+    description: String
+): String {
+
+    return withContext(Dispatchers.IO) {
+
+        try {
+
+            val url =
+                URL("http://127.0.0.1:8080/api/tasks/create")
+
+            val connection =
+                url.openConnection() as HttpURLConnection
+
+            connection.requestMethod = "POST"
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+            connection.doOutput = true
+
+            connection.setRequestProperty(
+                "Content-Type",
+                "application/json"
+            )
+
+            val safeTitle =
+                title
+                    .replace("\\", "\\\\")
+                    .replace("\"", "\\\"")
+
+            val safeDescription =
+                description
+                    .replace("\\", "\\\\")
+                    .replace("\"", "\\\"")
+
+            val json = """
+                {
+                    "title":"$safeTitle",
+                    "description":"$safeDescription",
+                    "user_id":1
+                }
+            """.trimIndent()
+
+            connection.outputStream.use { output ->
+
+                output.write(
+                    json.toByteArray(Charsets.UTF_8)
+                )
+            }
+
+            val responseCode =
+                connection.responseCode
+
+            val responseStream =
+                if (responseCode in 200..299) {
+                    connection.inputStream
+                } else {
+                    connection.errorStream
+                }
+
+            val response =
+                responseStream
+                    ?.bufferedReader()
+                    ?.use {
+                        it.readText()
+                    }
+                    ?: ""
+
+            if (responseCode in 200..299) {
+
+                if (response.isBlank()) {
+                    "Task created successfully."
+                } else {
+                    response
+                }
+
+            } else {
+
+                "Create task failed.\nHTTP $responseCode\n$response"
+            }
+
+        } catch (e: Exception) {
+
+            "Unable to create task.\n${e.message}"
         }
     }
 }
